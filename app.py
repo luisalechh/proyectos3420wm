@@ -1,119 +1,90 @@
 import requests
+from requests.auth import HTTPBasicAuth
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 from dash import Dash, dcc, html
 import plotly.graph_objs as go
 
-# --------------------------
-# CONFIGURACIÓN DE JIRA API
-# --------------------------
-JIRA_DOMAIN = "https://proyectos3420wm.atlassian.net"
-API_USER = "lchanquetti@3420wm.com"
-API_TOKEN = "ATATT3xFfGF0a_WlAhmi1Of468OoqgdRso7nVA2HT7bYYiCmUC8aYfralmYuO5WZYHDPrNNweb7xvTVpiGsA-HB-Y_l-C5AvTStvgp15MUZWEKXkuQFL27fyK5qh3pAOEeRVmH8XJoBCLV3DUBJOfpLCWc2ViAaEujyKfAjXkGMcecSie9Y55LA=74B793B1"
-PROJECT_KEY = "PW"  # ← Aquí tu clave de proyecto
-
-auth = (API_USER, API_TOKEN)
+# Configuración
+email = "lchanquetti@3420wm.com"
+api_token = "ATATT3xFfGF0a_WlAhmi1Of468OoqgdRso7nVA2HT7bYYiCmUC8aYfralmYuO5WZYHDPrNNweb7xvTVpiGsA-HB-Y_l-C5AvTStvgp15MUZWEKXkuQFL27fyK5qh3pAOEeRVmH8XJoBCLV3DUBJOfpLCWc2ViAaEujyKfAjXkGMcecSie9Y55LA=74B793B1"
+domain = "proyectos3420wm.atlassian.net"
+project_key = "PW"
+auth = HTTPBasicAuth(email, api_token)
 headers = {"Accept": "application/json"}
 
-# --------------------------
-# FUNCIONES PARA LA API
-# --------------------------
+# 1. Obtener board del proyecto
+board_url = f"https://{domain}/rest/agile/1.0/board"
+params = {'projectKeyOrId': project_key}
+board_resp = requests.get(board_url, headers=headers, auth=auth, params=params)
+board_id = board_resp.json()["values"][0]["id"]
 
-def obtener_board_id(project_key):
-    url = f"{JIRA_DOMAIN}/rest/agile/1.0/board"
-    params = {"projectKeyOrId": project_key}
-    response = requests.get(url, auth=auth, headers=headers, params=params)
-    data = response.json()
-    if data["values"]:
-        return data["values"][0]["id"]
-    else:
-        raise Exception("No se encontró un board para el proyecto.")
+# 2. Obtener sprint activo
+sprint_url = f"https://{domain}/rest/agile/1.0/board/{board_id}/sprint"
+sprints_resp = requests.get(sprint_url, headers=headers, auth=auth)
+active_sprint = next(s for s in sprints_resp.json()["values"] if s["state"] == "active")
+sprint_id = active_sprint["id"]
 
-def obtener_sprint_id(board_id):
-    url = f"{JIRA_DOMAIN}/rest/agile/1.0/board/{board_id}/sprint"
-    response = requests.get(url, auth=auth, headers=headers)
-    data = response.json()
-    for sprint in data["values"]:
-        if sprint["state"] == "active":  # puedes cambiar a 'future' o 'closed'
-            return sprint["id"]
-    raise Exception("No se encontró un sprint activo.")
+# Fechas del sprint
+fecha_inicio = datetime.strptime(active_sprint["startDate"][:10], "%Y-%m-%d")
+fecha_fin = datetime.strptime(active_sprint["endDate"][:10], "%Y-%m-%d")
+fechas = [fecha_inicio + timedelta(days=i) for i in range((fecha_fin - fecha_inicio).days + 1)]
 
-def obtener_fechas_sprint(sprint_id):
-    url = f"{JIRA_DOMAIN}/rest/agile/1.0/sprint/{sprint_id}"
-    response = requests.get(url, auth=auth, headers=headers)
-    data = response.json()
-    fecha_inicio = datetime.strptime(data["startDate"][:10], "%Y-%m-%d")
-    fecha_fin = datetime.strptime(data["endDate"][:10], "%Y-%m-%d")
-    return fecha_inicio, fecha_fin
+# 3. Obtener issues del sprint
+issues_url = f"https://{domain}/rest/agile/1.0/sprint/{sprint_id}/issue?maxResults=100"
+issues_resp = requests.get(issues_url, headers=headers, auth=auth)
+issues = issues_resp.json()["issues"]
 
-def obtener_issues_sprint(sprint_id):
-    url = f"{JIRA_DOMAIN}/rest/agile/1.0/sprint/{sprint_id}/issue"
-    issues = []
-    start_at = 0
-    max_results = 50
+# 4. Estado por fecha
+estado_por_fecha = {fecha: 0 for fecha in fechas}
 
-    while True:
-        params = {"startAt": start_at, "maxResults": max_results}
-        response = requests.get(url, auth=auth, headers=headers, params=params)
-        data = response.json()
-        issues += data["issues"]
-        if start_at + max_results >= data["total"]:
-            break
-        start_at += max_results
+for issue in issues:
+    key = issue["key"]
+    estado_inicial = issue["fields"]["status"]["name"]
+    creado = datetime.strptime(issue["fields"]["created"][:10], "%Y-%m-%d")
+    issue_url = f"https://{domain}/rest/api/3/issue/{key}?expand=changelog"
+    detail = requests.get(issue_url, headers=headers, auth=auth).json()
+    cambios = detail.get("changelog", {}).get("histories", [])
+    
+    historial = []
+    for h in cambios:
+        fecha = datetime.strptime(h["created"][:10], "%Y-%m-%d")
+        for item in h["items"]:
+            if item["field"] == "status":
+                historial.append((fecha, item["fromString"], item["toString"]))
 
-    return issues
-
-def procesar_burndown(issues, fecha_inicio, fecha_fin):
-    fechas = pd.date_range(start=fecha_inicio, end=fecha_fin)
-    pendientes_por_dia = []
+    historial.sort()
+    estado_actual = estado_inicial
 
     for fecha in fechas:
-        pendientes = 0
-        for issue in issues:
-            creado = datetime.strptime(issue["fields"]["created"][:10], "%Y-%m-%d")
-            resuelto = issue["fields"]["resolutiondate"]
-            resuelto = datetime.strptime(resuelto[:10], "%Y-%m-%d") if resuelto else None
+        for cambio_fecha, _, nuevo_estado in historial:
+            if cambio_fecha <= fecha:
+                estado_actual = nuevo_estado
+            else:
+                break
 
-            if creado <= fecha and (resuelto is None or resuelto > fecha):
-                pendientes += 1
+        if estado_actual != "PRODUCCION":
+            estado_por_fecha[fecha] += 1
 
-        pendientes_por_dia.append({"fecha": fecha, "pendientes": pendientes})
+# Datos para la gráfica
+valores = list(estado_por_fecha.values())
+linea_ideal = [valores[0] - i * (valores[0] / (len(fechas) - 1)) for i in range(len(fechas))]
 
-    return pd.DataFrame(pendientes_por_dia)
-
-# --------------------------
-# FLUJO COMPLETO
-# --------------------------
-
-board_id = obtener_board_id(PROJECT_KEY)
-sprint_id = obtener_sprint_id(board_id)
-fecha_inicio, fecha_fin = obtener_fechas_sprint(sprint_id)
-issues = obtener_issues_sprint(sprint_id)
-df_burndown = procesar_burndown(issues, fecha_inicio, fecha_fin)
-
-# --------------------------
-# CREAR DASH APP
-# --------------------------
-
+# Crear app Dash
 app = Dash(__name__)
-server = app.server
+app = app.server
 app.layout = html.Div([
-    html.H1("Gráfico de Trabajo Pendiente (Burndown)"),
+    html.H1("Gráfica de trabajo pendiente (Burndown Jira)"),
     dcc.Graph(
-        id='burndown-chart',
         figure={
             'data': [
-                go.Scatter(
-                    x=df_burndown["fecha"],
-                    y=df_burndown["pendientes"],
-                    mode='lines+markers',
-                    name='Pendientes'
-                )
+                go.Scatter(x=fechas, y=valores, mode='lines+markers', name='Trabajo pendiente', line=dict(color='red')),
+                go.Scatter(x=fechas, y=linea_ideal, mode='lines', name='Línea ideal', line=dict(dash='dash', color='gray'))
             ],
             'layout': go.Layout(
-                title='Burndown Chart del Sprint',
-                xaxis={'title': 'Fecha'},
-                yaxis={'title': 'Incidencias Pendientes'},
+                title="Burndown Chart del Sprint Activo",
+                xaxis=dict(title='Fecha'),
+                yaxis=dict(title='Número de Tareas'),
                 hovermode='closest'
             )
         }
@@ -122,4 +93,5 @@ app.layout = html.Div([
 
 if __name__ == '__main__':
     app.run_server(debug=True)
+
 
