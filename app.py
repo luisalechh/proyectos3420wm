@@ -7,7 +7,7 @@ import plotly.graph_objs as go
 # --------------------------
 # CONFIGURACIÓN DE JIRA API
 # --------------------------
-JIRA_DOMAIN = "proyectos3420wm.atlassian.net"
+JIRA_DOMAIN = "https://proyectos3420wm.atlassian.net"
 API_USER = "lchanquetti@3420wm.com"
 API_TOKEN = "ATATT3xFfGF0a_WlAhmi1Of468OoqgdRso7nVA2HT7bYYiCmUC8aYfralmYuO5WZYHDPrNNweb7xvTVpiGsA-HB-Y_l-C5AvTStvgp15MUZWEKXkuQFL27fyK5qh3pAOEeRVmH8XJoBCLV3DUBJOfpLCWc2ViAaEujyKfAjXkGMcecSie9Y55LA=74B793B1"
 PROJECT_KEY = "PW"  # ← Aquí tu clave de proyecto
