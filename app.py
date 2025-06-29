@@ -24,7 +24,13 @@ headers = {
 def obtener_boards():
     url = f"{JIRA_URL}/rest/agile/1.0/board"
     response = requests.get(url, headers=headers, auth=auth)
-    return response.json()["values"]
+
+    if response.status_code != 200:
+        print("Error al obtener tableros:", response.status_code, response.text)
+        return []
+
+    return response.json().get("values", [])
+
 
 def obtener_id_board(project_key):
     for e in obtener_boards():
