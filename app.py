@@ -3,13 +3,17 @@ import plotly.express as px
 import pandas as pd
 import requests
 from requests.auth import HTTPBasicAuth
+import os 
+from dotenv import load_dotenv
 
 app = Dash()
 server = app.server
 
+load_dotenv()
+
 JIRA_URL = "https://proyectos3420wm.atlassian.net"
-EMAIL = "lchanquetti@3420wm.com"
-API_TOKEN = "ATATT3xFfGF0_3EuG7gG9kftFKTQWkMGT8j8Lr2dF3T5GWZbfee23kUU_5oj_AuB3hHNUvXSeIhS0rdMrXygiNAU-8tQ9-DR8PIAfmZYfvtpK7lTACQu7giG-m1dz3ev2IAkgjDrBp7d6cSMrwlhfYDRc9HYMgTtKx7QLLV29Vi_y-wH9G_SV4I=2EFB6C49"
+EMAIL = os.getenv("JIRA_EMAIL")
+API_TOKEN = os.getenv("JIRA_API_TOKEN")
 
 auth = HTTPBasicAuth(EMAIL, API_TOKEN)
 headers = {
@@ -72,8 +76,8 @@ cant_estados = [cant_tareas_por_hacer, cant_en_curso, cant_finalizada, cant_qa, 
 
 
 df = pd.DataFrame({
-    "Fruit": ["Tareas por hacer", "En curso", "Listo", "QA", "Aprobado QA", "Produccion", "Aprobado produccion"],
-    "Amount": cant_estados,
+    "Estados": ["Tareas por hacer", "En curso", "Listo", "QA", "Aprobado QA", "Produccion", "Aprobado produccion"],
+    "Cantidad de issues": cant_estados,
 })
 
 fig = px.bar(df, x="Estados", y="Cantidad de issues", title="Estados vs Cantidad - Issues")
