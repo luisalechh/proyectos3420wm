@@ -22,6 +22,15 @@ app = Dash()
 server = app.server
 
 # Funciones para consultar Jira API
+def obtener_projects_keys():
+    url = f"{JIRA_URL}/rest/api/3/project"
+    response = requests.get(url, headers=headers, auth=auth)
+    if response.status_code != 200:
+        print("Error al obtener proyectos:", response.status_code, response.text)
+        return []
+    lista_projects = response.json()
+    return [project["key"] for project in lista_projects
+            
 def obtener_boards():
     url = f"{JIRA_URL}/rest/agile/1.0/board"
     response = requests.get(url, headers=headers, auth=auth)
@@ -59,6 +68,11 @@ def obtener_issues_sprint(sprint_id):
 # Layout de la app
 app.layout = html.Div([
     html.H1("Estados de tareas en Sprint Activo"),
+    dcc.Dropdown(
+        id="proyecto-dropdown",
+        options=[{"label": key, "value": key} for key in obtener_projects_keys()],
+        placeholder="Seleccione un proyecto"
+    ),
     dcc.Graph(id="grafico-estados"),
     dcc.Interval(id="intervalo", interval=30*1000, n_intervals=0)  # 30 segundos
 ])
@@ -69,6 +83,9 @@ app.layout = html.Div([
     Input("intervalo", "n_intervals")
 )
 def actualizar_grafico(n):
+    if not project_key:
+        return px.bar(title="Seleccione un proyecto")
+        
     estados = [
         "Tareas por hacer", "En curso", "Finalizada",
         "Control de calidad", "APROBADO QA", "PRODUCCION", "APROBADO PRODUCCION"
@@ -94,7 +111,7 @@ def actualizar_grafico(n):
         "Cantidad de issues": [conteo[estado] for estado in estados]
     })
 
-    fig = px.bar(df, x="Estados", y="Cantidad de issues", title="Estados vs Cantidad - Issues")
+    fig = px.bar(df, x="Estados", y="Cantidad de issues", title=f"Estados de issues en Sprint Activo - Proyecto {project_key}")
     return fig
 
 if __name__ == "__main__":
