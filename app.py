@@ -92,7 +92,7 @@ def actualizar_grafico(project_key, n_intervals):
     ]
     conteo = {estado: 0 for estado in estados}
 
-    board_id = obtener_id_board("UR")
+    board_id = obtener_id_board(project_key)
     if not board_id:
         return px.bar(title="Error: no se encontró el board")
 
