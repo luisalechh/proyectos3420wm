@@ -80,9 +80,9 @@ app.layout = html.Div([
 # Callback que actualiza la gráfica cada 30 segundos
 @app.callback(
     Output("grafico-estados", "figure"),
-    Input("intervalo", "n_intervals")
+    [Input("proyecto-dropdown", "value"), Input("intervalo", "n_intervals")]
 )
-def actualizar_grafico(n):
+def actualizar_grafico(project_key, n):
     if not project_key:
         return px.bar(title="Seleccione un proyecto")
         
