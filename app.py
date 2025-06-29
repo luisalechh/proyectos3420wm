@@ -1,100 +1,104 @@
-from dash import Dash, html, dcc
+from dash import Dash, html, dcc, Output, Input
 import plotly.express as px
 import pandas as pd
 import requests
 from requests.auth import HTTPBasicAuth
-import os 
+import os
 from dotenv import load_dotenv
 
-app = Dash()
-server = app.server
-
+# Cargar variables de entorno (.env o Render)
 load_dotenv()
 
+# Configuración de Jira
 JIRA_URL = "https://proyectos3420wm.atlassian.net"
 EMAIL = os.getenv("JIRA_EMAIL")
 API_TOKEN = os.getenv("JIRA_API_TOKEN")
 
 auth = HTTPBasicAuth(EMAIL, API_TOKEN)
-headers = {
-    "Accept": "application/json"
-}
+headers = {"Accept": "application/json"}
 
-# Obtener los tableros del proyecto PW
+# Inicializar la aplicación Dash
+app = Dash()
+server = app.server
+
+# Funciones para consultar Jira API
 def obtener_boards():
     url = f"{JIRA_URL}/rest/agile/1.0/board"
     response = requests.get(url, headers=headers, auth=auth)
-
     if response.status_code != 200:
         print("Error al obtener tableros:", response.status_code, response.text)
         return []
-
     return response.json().get("values", [])
-
 
 def obtener_id_board(project_key):
     for e in obtener_boards():
-        if e["location"]["projectKey"] == project_key:
+        if e.get("location", {}).get("projectKey") == project_key:
             return e["id"]
+    return None
 
 def obtener_sprints(board_id):
     url = f"{JIRA_URL}/rest/agile/1.0/board/{board_id}/sprint"
     response = requests.get(url, headers=headers, auth=auth)
-    return response.json()["values"]
+    if response.status_code == 200:
+        return response.json().get("values", [])
+    return []
 
 def obtener_id_sprint_activo(board_id):
     for e in obtener_sprints(board_id):
-        if e["state"] == "active":
+        if e.get("state") == "active":
             return e["id"]
-
-     
+    return None
 
 def obtener_issues_sprint(sprint_id):
     url = f"{JIRA_URL}/rest/agile/1.0/sprint/{sprint_id}/issue"
     response = requests.get(url, headers=headers, auth=auth)
-    return response.json()["issues"] #[1]["fields"]
+    if response.status_code == 200:
+        return response.json().get("issues", [])
+    return []
 
-
-board_id = obtener_id_board("UR")
-id_sprint_activo = obtener_id_sprint_activo(board_id)
-lista_issues = obtener_issues_sprint(id_sprint_activo)
-
-cant_tareas_por_hacer = 0
-cant_en_curso = 0
-cant_finalizada = 0
-cant_qa = 0
-cant_aprob_qa = 0
-cant_prod = 0
-cant_aprob_prod = 0
-
-for issue in lista_issues:
-    nombre_estado = issue["fields"]["status"]["name"] 
-    if nombre_estado == "Tareas por hacer": cant_tareas_por_hacer += 1
-    elif nombre_estado == "En curso": cant_en_curso += 1
-    elif nombre_estado == "Finalizada": cant_finalizada += 1
-    elif nombre_estado == "Control de calidad": cant_qa += 1
-    elif nombre_estado == "APROBADO QA": cant_aprob_qa += 1
-    elif nombre_estado == "PRODUCCION": cant_prod += 1
-    elif nombre_estado == "APROBADO PRODUCCION": cant_aprob_prod += 1
-
-cant_estados = [cant_tareas_por_hacer, cant_en_curso, cant_finalizada, cant_qa, cant_aprob_qa, cant_prod, cant_aprob_prod]   
-
-
-
-df = pd.DataFrame({
-    "Estados": ["Tareas por hacer", "En curso", "Listo", "QA", "Aprobado QA", "Produccion", "Aprobado produccion"],
-    "Cantidad de issues": cant_estados,
-})
-
-fig = px.bar(df, x="Estados", y="Cantidad de issues", title="Estados vs Cantidad - Issues")
-
-# Layout de la aplicación
-app.layout = html.Div(children=[
-    html.H1('Ejemplo con Dash'),
-    dcc.Graph(id='grafico-frutas', figure=fig)
+# Layout de la app
+app.layout = html.Div([
+    html.H1("Estados de tareas en Sprint Activo"),
+    dcc.Graph(id="grafico-estados"),
+    dcc.Interval(id="intervalo", interval=30*1000, n_intervals=0)  # 30 segundos
 ])
 
-if __name__ == '__main__':
+# Callback que actualiza la gráfica cada 30 segundos
+@app.callback(
+    Output("grafico-estados", "figure"),
+    Input("intervalo", "n_intervals")
+)
+def actualizar_grafico(n):
+    estados = [
+        "Tareas por hacer", "En curso", "Finalizada",
+        "Control de calidad", "APROBADO QA", "PRODUCCION", "APROBADO PRODUCCION"
+    ]
+    conteo = {estado: 0 for estado in estados}
+
+    board_id = obtener_id_board("UR")
+    if not board_id:
+        return px.bar(title="Error: no se encontró el board")
+
+    id_sprint_activo = obtener_id_sprint_activo(board_id)
+    if not id_sprint_activo:
+        return px.bar(title="Error: no hay sprint activo")
+
+    lista_issues = obtener_issues_sprint(id_sprint_activo)
+    for issue in lista_issues:
+        nombre_estado = issue["fields"]["status"]["name"]
+        if nombre_estado in conteo:
+            conteo[nombre_estado] += 1
+
+    df = pd.DataFrame({
+        "Estados": estados,
+        "Cantidad de issues": [conteo[estado] for estado in estados]
+    })
+
+    fig = px.bar(df, x="Estados", y="Cantidad de issues", title="Estados vs Cantidad - Issues")
+    return fig
+
+if __name__ == "__main__":
     app.run(debug=True)
+
 
 
