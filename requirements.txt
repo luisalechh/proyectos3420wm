@@ -1,3 +1,6 @@
 dash
+plotly
 pandas
+requests
 gunicorn
+python-dotenv
