@@ -24,13 +24,13 @@ server = app.server
 # Funciones para consultar Jira API
 def obtener_projects_keys():
     url = f"{JIRA_URL}/rest/api/3/project"
-    response = requests.get(url, headers=headers, auth=auth)
-    if response.status_code != 200:
-        print("Error al obtener proyectos:", response.status_code, response.text)
-        return []
+    response = requests.get(url,headers=headers,auth=auth)
     lista_projects = response.json()
-    return [project["key"] for project in lista_projects
-            
+    lista_projects_keys = []
+    for project in lista_projects:
+        lista_projects_keys.append(project["key"])
+    return lista_projects_keys
+    
 def obtener_boards():
     url = f"{JIRA_URL}/rest/agile/1.0/board"
     response = requests.get(url, headers=headers, auth=auth)
