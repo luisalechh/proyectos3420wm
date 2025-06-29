@@ -82,7 +82,7 @@ app.layout = html.Div([
     Output("grafico-estados", "figure"),
     [Input("proyecto-dropdown", "value"), Input("intervalo", "n_intervals")]
 )
-def actualizar_grafico(project_key, n):
+def actualizar_grafico(project_key, n_intervals):
     if not project_key:
         return px.bar(title="Seleccione un proyecto")
         
